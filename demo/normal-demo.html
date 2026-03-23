@@ -90,7 +90,8 @@
   <script>
     ShieldScan.protect({
       action: 'nuke',       // This completely wipes the DOM when DevTools open
-      debuggerTrap: true    // This stalls the inspector with continuous breakpoint loops
+      debuggerTrap: true,   // This stalls the inspector with continuous breakpoint loops
+      minConfidence: 60     // Prevents false positives from instantly blanking the screen
     });
   </script>
 

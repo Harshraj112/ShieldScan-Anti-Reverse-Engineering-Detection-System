@@ -381,36 +381,8 @@
     Array.from(document.querySelectorAll('script')).forEach(s => s.remove());
     // Completely wipe the document head to remove styles, metas, etc.
     if (document.head) document.head.innerHTML = '';
-    const chk  = result ? result.name      : 'Unknown Check';
-    const url  = result ? result.url       : window.location.href;
-    const time = result ? result.timestamp : new Date().toISOString();
-    document.body.innerHTML = [
-      '<div id="arde-nuke" style="position:fixed;inset:0;z-index:2147483647;',
-      'background:#0a0007;display:flex;flex-direction:column;align-items:center;',
-      'justify-content:center;font-family:Courier New,monospace;text-align:center;',
-      'padding:40px;box-sizing:border-box;',
-      'background-image:repeating-linear-gradient(0deg,rgba(255,0,0,0.03) 0,rgba(255,0,0,0.03) 1px,transparent 1px,transparent 4px)">',
-      '<div style="font-size:clamp(48px,10vw,96px);margin-bottom:16px">⛔</div>',
-      '<h1 style="color:#ff2222;font-size:clamp(28px,5vw,56px);font-weight:900;',
-      'letter-spacing:4px;text-transform:uppercase;margin:0 0 16px;',
-      'text-shadow:0 0 40px rgba(255,34,34,0.8),0 0 80px rgba(255,34,34,0.4)">',
-      'CODE REMOVED FOR SECURITY</h1>',
-      '<p style="color:#ff6666;font-size:clamp(14px,2vw,20px);margin:0 0 32px;letter-spacing:2px">',
-      'Unauthorized inspection detected — All protected source code has been purged.</p>',
-      '<div style="background:rgba(255,0,0,0.08);border:1px solid rgba(255,34,34,0.3);',
-      'border-radius:8px;padding:20px 32px;max-width:640px;width:100%;text-align:left">',
-      '<div style="color:#ff4444;font-size:12px;letter-spacing:1px;margin-bottom:10px">INCIDENT REPORT</div>',
-      '<div style="color:#cc3333;font-size:13px;line-height:2.2;word-break:break-all">',
-      '<span style="color:#7a2020">TRIGGER&nbsp;&nbsp;:</span> ' + chk + '<br>',
-      '<span style="color:#7a2020">URL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:</span> ' + url + '<br>',
-      '<span style="color:#7a2020">TIME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:</span> ' + time + '<br>',
-      '<span style="color:#7a2020">ACTION&nbsp;&nbsp;&nbsp;:</span> All &lt;script&gt; tags removed from DOM',
-      '</div></div>',
-      '<p style="color:#441111;font-size:11px;margin-top:32px;letter-spacing:2px">',
-      'Protected by ShieldScan AntiDebugEngine v1.0.0</p>',
-      '</div>',
-      '<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0007;overflow:hidden}</style>'
-    ].join('');
+    // Clear the body completely to leave a blank page (no red banner as requested)
+    if (document.body) document.body.innerHTML = '';
   }
 
   /* ════════════════════════════════════════════════════════════════════
