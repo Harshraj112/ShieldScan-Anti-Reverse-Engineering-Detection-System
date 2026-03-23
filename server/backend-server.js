@@ -8,7 +8,7 @@
  *   node backend-server.js
  *
  * Then configure antidebug.js with:
- *   ShieldScan.protect({ reportUrl: 'https://shieldscan-api.onrender.com/api/threats' });
+ *   ShieldScan.protect({ reportUrl: 'https://shieldscan-api.onrender.com/api/threats', reportToken: 'shared-secret' });
  */
 
 const express = require('express');
@@ -19,10 +19,108 @@ const path    = require('path');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 const LOG_FILE = path.join(__dirname, 'threats.json');
+const API_KEY = process.env.SHIELDSCAN_API_KEY || '';
+const ALLOWED_ORIGINS = (process.env.SHIELDSCAN_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(v => v.trim())
+  .filter(Boolean);
+const RATE_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT = parseInt(process.env.SHIELDSCAN_RATE_LIMIT || '120', 10);
+const requestCounts = new Map();
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (!ALLOWED_ORIGINS.length) return true;
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
+function normalizeUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return '';
+  try {
+    return new URL(value).toString();
+  } catch (error) {
+    return '';
+  }
+}
+
+function cleanupRateLimit(now) {
+  requestCounts.forEach((entry, key) => {
+    if (now - entry.windowStart > RATE_WINDOW_MS) requestCounts.delete(key);
+  });
+}
+
+function verifyApiKey(req, res, next) {
+  if (!API_KEY) return next();
+  const token = req.get('x-shieldscan-key') || (req.body && req.body.token) || req.query.token;
+  if (token !== API_KEY) {
+    return res.status(401).json({ error: 'Missing or invalid API key' });
+  }
+  return next();
+}
+
+function rateLimit(req, res, next) {
+  const now = Date.now();
+  cleanupRateLimit(now);
+  const key = req.ip || 'unknown';
+  const entry = requestCounts.get(key);
+  if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
+    requestCounts.set(key, { count: 1, windowStart: now });
+    return next();
+  }
+  if (entry.count >= RATE_LIMIT) {
+    return res.status(429).json({ error: 'Rate limit exceeded' });
+  }
+  entry.count += 1;
+  return next();
+}
+
+function validatePayload(body) {
+  if (!body || body.type !== 'shieldscan-event') {
+    return { ok: false, error: 'Invalid payload type' };
+  }
+  if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 120) {
+    return { ok: false, error: 'Invalid threat name' };
+  }
+  if (!['DETECTED', 'CLEAN', 'UNKNOWN'].includes(body.status)) {
+    return { ok: false, error: 'Invalid status' };
+  }
+  if (!Number.isFinite(body.confidence) || body.confidence < 0 || body.confidence > 100) {
+    return { ok: false, error: 'Invalid confidence' };
+  }
+  if (typeof body.detail !== 'string' || body.detail.length > 2000) {
+    return { ok: false, error: 'Invalid detail' };
+  }
+  if (typeof body.timestamp !== 'string' || Number.isNaN(Date.parse(body.timestamp))) {
+    return { ok: false, error: 'Invalid timestamp' };
+  }
+  const url = normalizeUrl(body.url);
+  const origin = normalizeUrl(body.origin);
+  if (!url || !origin) {
+    return { ok: false, error: 'Invalid url/origin' };
+  }
+  return {
+    ok: true,
+    value: {
+      eventId: typeof body.eventId === 'string' && body.eventId ? body.eventId : `${origin}::${body.name}::${body.timestamp}`,
+      name: body.name.trim(),
+      status: body.status,
+      confidence: body.confidence,
+      detail: body.detail,
+      url,
+      origin,
+      timestamp: body.timestamp
+    }
+  };
+}
 
 // ── Middleware ──────────────────────────────────────────────────────────────
-app.use(cors());                        // allow cross-origin requests from any site
-app.use(express.json());                // parse JSON bodies
+app.use(cors({
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    return callback(new Error('Origin not allowed by ShieldScan'));
+  }
+}));
+app.use(express.json({ limit: '32kb' })); // parse JSON bodies
 app.use(express.static(__dirname));     // serve your HTML/JS files
 
 // ── Root Health Check ───────────────────────────────────────────────────────
@@ -38,23 +136,23 @@ try {
 } catch (e) { /* first run — file doesn't exist yet */ }
 
 // ── POST /api/threats — receive a threat from antidebug.js ──────────────────
-app.post('/api/threats', (req, res) => {
-  const body = req.body;
-
-  // Validate required fields
-  if (!body || body.type !== 'shieldscan-event') {
-    return res.status(400).json({ error: 'Invalid payload' });
+app.post('/api/threats', verifyApiKey, rateLimit, (req, res) => {
+  const validation = validatePayload(req.body);
+  if (!validation.ok) {
+    return res.status(400).json({ error: validation.error });
   }
+  const body = validation.value;
 
   const threat = {
-    id:         Date.now(),
-    name:       body.name       || 'Unknown',
-    status:     body.status     || 'DETECTED',
-    confidence: body.confidence || 0,
-    detail:     body.detail     || '',
-    url:        body.url        || '',
-    origin:     body.origin     || '',
-    timestamp:  body.timestamp  || new Date().toISOString(),
+    id:         body.eventId,
+    eventId:    body.eventId,
+    name:       body.name,
+    status:     body.status,
+    confidence: body.confidence,
+    detail:     body.detail,
+    url:        body.url,
+    origin:     body.origin,
+    timestamp:  body.timestamp,
     serverTime: new Date().toISOString(),
     ip:         req.ip
   };
@@ -115,5 +213,5 @@ app.listen(PORT, () => {
   console.log(`  GET  /api/stats     — type/domain breakdown`);
   console.log(`  DELETE /api/threats — clear log`);
   console.log(`\nConfigure antidebug.js:`);
-  console.log(`  ShieldScan.protect({ reportUrl: 'https://shieldscan-api.onrender.com/api/threats' });`);
+  console.log(`  ShieldScan.protect({ reportUrl: 'https://shieldscan-api.onrender.com/api/threats', reportToken: 'shared-secret' });`);
 });

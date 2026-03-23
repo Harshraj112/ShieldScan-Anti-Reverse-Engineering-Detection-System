@@ -20,7 +20,7 @@
 <body>
 
 <h1>🛡 ShieldScan — Example Usage</h1>
-<p>This page is protected by <strong>antidebug.js</strong>. Try opening DevTools to trigger detection.</p>
+<p>This page is protected by <strong>antidebug.js</strong>. Try opening DevTools to trigger telemetry and response logic.</p>
 
 <div id="status">
   Shield: <span class="badge safe" id="shield-badge">PROTECTED</span>
@@ -39,7 +39,7 @@
     action:        'warn',
     interval:      1000,
     minConfidence: 40,
-    report:        true,          // sends to monitor.html
+    report:        true,          // sends to demo/index.html
     debuggerTrap:  false,         // set true for stronger protection
     onDetected: function(result) {
       reportThreat(result.name);  // manual report shorthand
@@ -78,7 +78,7 @@
     action:        'warn',          // change to 'nuke' for maximum protection
     interval:      1000,
     minConfidence: 40,
-    report:        true,            // broadcast to monitor.html dashboard
+    report:        true,            // broadcast to demo/index.html dashboard
     debuggerTrap:  false,           // set true to make debugging painful
 
     onDetected: function (result) {

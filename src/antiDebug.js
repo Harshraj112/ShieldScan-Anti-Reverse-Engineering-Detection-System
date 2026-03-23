@@ -23,6 +23,14 @@
   const _iso = () => new Date().toISOString();
   const _noop = () => {};
   const _safeCall = (fn, fallback = null) => { try { return fn(); } catch (e) { return fallback; } };
+  const _eventId = payload => [
+    payload.origin || 'unknown-origin',
+    payload.url || 'unknown-url',
+    payload.name || 'unknown-name',
+    payload.status || 'unknown-status',
+    payload.timestamp || _iso(),
+    payload.confidence != null ? payload.confidence : 'na'
+  ].join('::');
 
   // Slightly obfuscated keyword fragments
   const _kWD  = 'web' + 'dri' + 'ver';
@@ -401,6 +409,12 @@
     _chkTimingAnomaly,
     _chkIframeSandbox
   ];
+  const STRONG_SIGNALS = new Set([
+    'Prototype Tampering',
+    'FP.toString Override',
+    'Browser Automation',
+    'Headless Browser'
+  ]);
 
   class AntiDebugEngine {
     /**
@@ -423,9 +437,13 @@
         redirectUrl:   '',
         minConfidence: 50,
         // ── Cross-tab reporting ──
-        report:      true,                    // broadcast threats to monitor.html
+        report:      true,                    // broadcast threats to demo/index.html
         channelName: 'shieldscan-monitor',   // BroadcastChannel name
-        reportUrl:   ''                       // optional: POST endpoint (cross-origin)
+        reportUrl:   '',                      // optional: POST endpoint (cross-origin)
+        reportToken: '',
+        scoreThreshold: 80,
+        strongSignalThreshold: 70,
+        consecutiveDetections: 2
       }, config);
 
       this._report       = [];
@@ -436,6 +454,7 @@
       this._corrupted    = false;
       this._frozen       = false;
       this._nuked        = false;
+      this._streaks      = new Map();
 
       // Open BroadcastChannel for cross-tab reporting
       this._bc = null;
@@ -449,13 +468,22 @@
       if (!this.config.report) return;
       const payload = {
         type:       'shieldscan-event',
+        eventId:    _eventId({
+          origin:     (typeof window !== 'undefined' ? window.location.origin : 'unknown'),
+          url:        r.url,
+          name:       r.name,
+          status:     r.status,
+          timestamp:  r.timestamp,
+          confidence: r.confidence
+        }),
         name:       r.name,
         status:     r.status,
         confidence: r.confidence,
         detail:     r.detail,
         url:        r.url,
         timestamp:  r.timestamp,
-        origin:     (typeof window !== 'undefined' ? window.location.origin : 'unknown')
+        origin:     (typeof window !== 'undefined' ? window.location.origin : 'unknown'),
+        token:      this.config.reportToken || undefined
       };
       // 1. BroadcastChannel (real-time, same browser)
       if (this._bc) { try { this._bc.postMessage(payload); } catch(e) {} }
@@ -503,14 +531,31 @@
 
       results.forEach(r => {
         this._report.push(r);
-        if (r.status === 'DETECTED' && r.confidence >= this.config.minConfidence) {
-          this._triggerAction(r);
-          this._broadcast(r);  // ← send to monitor dashboard
-          if (typeof this.config.onDetected === 'function') {
-            _safeCall(() => this.config.onDetected(r));
-          }
-        }
+        const prev = this._streaks.get(r.name) || 0;
+        this._streaks.set(r.name, r.status === 'DETECTED' ? prev + 1 : 0);
       });
+
+      const candidates = results.filter(r => r.status === 'DETECTED' && r.confidence >= this.config.minConfidence);
+      const strongCandidates = candidates.filter(r =>
+        STRONG_SIGNALS.has(r.name) && r.confidence >= this.config.strongSignalThreshold
+      );
+      const weakCandidates = candidates.filter(r => !STRONG_SIGNALS.has(r.name));
+      const weakScore = weakCandidates.reduce((sum, r) => sum + Math.round(r.confidence * 0.5), 0);
+      const repeatedCandidate = candidates.find(r => (this._streaks.get(r.name) || 0) >= this.config.consecutiveDetections);
+      const shouldTrigger = strongCandidates.length > 0
+        || !!repeatedCandidate
+        || (weakCandidates.length >= 2 && weakScore >= this.config.scoreThreshold);
+
+      if (shouldTrigger) {
+        const primary = strongCandidates[0]
+          || repeatedCandidate
+          || candidates.slice().sort((a, b) => b.confidence - a.confidence)[0];
+        this._triggerAction(primary);
+        this._broadcast(primary);
+        if (typeof this.config.onDetected === 'function') {
+          _safeCall(() => this.config.onDetected(primary));
+        }
+      }
       return results;
     }
 
@@ -586,15 +631,26 @@
    *   reportThreat('Custom Trigger', window.location.href);
    */
   function reportThreat(type, url) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
+    const targetUrl = url || (typeof window !== 'undefined' ? window.location.href : 'unknown');
+    const timestamp = _iso();
     const payload = {
       type:       'shieldscan-event',
+      eventId:    _eventId({
+        origin,
+        url:        targetUrl,
+        name:       type || 'Manual Report',
+        status:     'DETECTED',
+        timestamp,
+        confidence: 100
+      }),
       name:       type || 'Manual Report',
       status:     'DETECTED',
       confidence: 100,
       detail:     `Manually reported: ${type}`,
-      url:        url || (typeof window !== 'undefined' ? window.location.href : 'unknown'),
-      timestamp:  _iso(),
-      origin:     typeof window !== 'undefined' ? window.location.origin : 'unknown'
+      url:        targetUrl,
+      timestamp,
+      origin
     };
     // BroadcastChannel
     try {
@@ -647,8 +703,9 @@
    *     action:        'warn',      // 'warn'|'nuke'|'freeze'|'corrupt'|'redirect'|'silent'
    *     interval:      1000,        // scan every N ms
    *     minConfidence: 40,          // only act if ≥N% confident
-   *     report:        true,        // broadcast to monitor.html
+   *     report:        true,        // broadcast to demo/index.html
    *     reportUrl:     '',          // optional POST endpoint
+   *     reportToken:   '',          // shared secret for your backend
    *     debuggerTrap:  false,       // enable continuous debugger loop
    *     debuggerMs:    200,         // trap interval ms
    *     onDetected: function(r) {}  // custom callback
@@ -660,9 +717,16 @@
       action:        config.action        || 'warn',
       interval:      config.interval      || 1000,
       minConfidence: config.minConfidence != null ? config.minConfidence : 40,
+      checks:        config.checks        || ['all'],
+      redirectUrl:   config.redirectUrl   || '',
       report:        config.report        != null ? config.report        : true,
+      channelName:   config.channelName   || 'shieldscan-monitor',
       reportUrl:     config.reportUrl     || '',
+      reportToken:   config.reportToken   || '',
       silent:        config.silent        || false,
+      scoreThreshold: config.scoreThreshold != null ? config.scoreThreshold : 80,
+      strongSignalThreshold: config.strongSignalThreshold != null ? config.strongSignalThreshold : 70,
+      consecutiveDetections: config.consecutiveDetections != null ? config.consecutiveDetections : 2,
       onDetected:    config.onDetected    || null
     });
     engine.start();
