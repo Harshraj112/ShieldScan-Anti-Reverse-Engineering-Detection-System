@@ -7,6 +7,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 server/threats.json
+*.log
 
 # OS files
 .DS_Store
