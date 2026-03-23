@@ -684,6 +684,9 @@
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════════════════
+     LOCAL antiDebug.js
+════════════════════════════════════════════════════════════════════ -->
 <script src="../src/antiDebug.js"></script>
 
 <!-- ════════════════════════════════════════════════════════════════════
@@ -919,7 +922,7 @@
   /* ── Initialize engine ──────────────────────────────────────────── */
   function initEngine() {
     engine = new AntiDebugEngine({
-      interval: 1000, silent: true, action: 'silent', minConfidence: 0, onDetected: null
+      interval: 1000, silent: true, action: 'silent', minConfidence: 0, onDetected: null, reportUrl: 'http://localhost:3000/api/threats'
     });
     const origScan = engine._scan.bind(engine);
     engine._scan = function () {
@@ -977,7 +980,39 @@
   });
 
   /* ── Threats modal ──────────────────────────────────────────────── */
-  btnThreats.addEventListener('click', () => overlay.classList.add('open'));
+  btnThreats.addEventListener('click', async () => {
+    overlay.classList.add('open');
+    try {
+      const res = await fetch('http://localhost:3000/api/threats');
+      if (res.ok) {
+        const data = await res.json();
+        modalBody.innerHTML = '';
+        if (data.threats.length === 0) {
+          modalBody.appendChild(modalEmpty);
+          modalEmpty.textContent = 'No threats detected yet.';
+        } else {
+          data.threats.forEach(r => {
+            const row = document.createElement('div');
+            row.className = 'threat-row';
+            row.innerHTML = `
+              <span class="tr-ts">${fmtTime(r.timestamp)}</span>
+              <span class="tr-name">${r.name}</span>
+              <span class="tr-conf">${r.confidence}%</span>
+              <span class="tr-detail" title="${r.url || ''} — ${r.detail}">${r.detail}</span>
+            `;
+            modalBody.appendChild(row);
+            const urlRow = document.createElement('div');
+            urlRow.style.cssText = 'padding:2px 20px 8px 20px;font-size:10px;color:#3d4f6a;border-bottom:1px solid rgba(255,68,68,0.06);font-family:var(--font);word-break:break-all';
+            urlRow.innerHTML = `<span style="color:#2a3a52">URL:</span> <span style="color:#4a5c70">${r.url || window.location.href}</span>`;
+            modalBody.appendChild(urlRow);
+          });
+        }
+        modalCount.textContent = `${data.total} threat${data.total !== 1 ? 's' : ''} recorded`;
+      }
+    } catch(e) {
+      console.error('Failed to fetch threats', e);
+    }
+  });
   $('close-modal').addEventListener('click', () => overlay.classList.remove('open'));
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.classList.remove('open'); });
