@@ -723,6 +723,7 @@
   let engine        = null;
   let logCount      = 0;
   const allThreats  = [];   // persistent threat ledger for modal
+  let totalThreatsFound = 0;
   const seenRemoteEvents = new Set();
 
   /* ── DOM refs ───────────────────────────────────────────────────── */
@@ -748,6 +749,21 @@
   const modalBody    = $('threats-modal-body');
   const modalCount   = $('threats-modal-count');
   const modalEmpty   = $('threats-modal-empty');
+
+  // Fetch initial threat count from backend
+  fetch('http://localhost:3000/api/stats')
+    .then(r => r.json())
+    .then(data => {
+      if (data && typeof data.total === 'number' && data.total > 0) {
+        totalThreatsFound = data.total;
+        if (mThreats) mThreats.textContent = totalThreatsFound;
+        if (threatsBadge) {
+          threatsBadge.textContent = totalThreatsFound;
+          threatsBadge.classList.add('show');
+        }
+        if (modalCount) modalCount.textContent = `${totalThreatsFound} threat${totalThreatsFound !== 1 ? 's' : ''} recorded`;
+      }
+    }).catch(()=>{});
 
   /* ── Build sidebar check rows ───────────────────────────────────── */
   CHECK_META.forEach(meta => {
@@ -830,9 +846,11 @@
   /* ── Add row to Threats modal store ─────────────────────────────── */
   function recordThreat(r) {
     allThreats.push(r);
-    // Update badge
-    threatsBadge.textContent = allThreats.length;
+    totalThreatsFound++;
+    // Update badge and main metric
+    threatsBadge.textContent = totalThreatsFound;
     threatsBadge.classList.add('show');
+    if (mThreats) mThreats.textContent = totalThreatsFound;
     // Rebuild modal list
     if (modalEmpty && modalEmpty.parentNode === modalBody)
       modalBody.removeChild(modalEmpty);
@@ -850,7 +868,7 @@
     urlRow.style.cssText = 'padding:2px 20px 8px 20px;font-size:10px;color:#3d4f6a;border-bottom:1px solid rgba(255,68,68,0.06);font-family:var(--font);word-break:break-all';
     urlRow.innerHTML = `<span style="color:#2a3a52">URL:</span> <span style="color:#4a5c70">${r.url || window.location.href}</span>`;
     modalBody.appendChild(urlRow);
-    modalCount.textContent = `${allThreats.length} threat${allThreats.length !== 1 ? 's' : ''} recorded`;
+    modalCount.textContent = `${totalThreatsFound} threat${totalThreatsFound !== 1 ? 's' : ''} recorded`;
   }
 
   /* ───────────────────────────────────────────────────────────────────
@@ -898,7 +916,7 @@
     if (!rpt) return;
 
     mTotal.textContent   = rpt.totalChecks;
-    mThreats.textContent = allThreats.length;  // use our ledger count
+    // mThreats.textContent is already updated directly when recordThreat is called
     const avgConf = latestResults
       ? Math.round(latestResults.reduce((s,r)=>s+r.confidence,0)/latestResults.length) : 0;
     mConf.textContent    = avgConf + '%';
@@ -1089,8 +1107,6 @@
 
     // Record to threats ledger (will survive in modal)
     recordThreat(r);
-    // Update metrics (use last known results array)
-    mThreats.textContent = allThreats.length;
     statusPill.className = 'threat'; statusText.textContent = 'REMOTE THREAT';
     // Reset status pill after 5s if engine is running clean
     clearTimeout(window._remotePillTimer);
