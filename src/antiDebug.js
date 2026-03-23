@@ -379,6 +379,8 @@
     engine.stop();
     // Strip every script tag from the live DOM
     Array.from(document.querySelectorAll('script')).forEach(s => s.remove());
+    // Completely wipe the document head to remove styles, metas, etc.
+    if (document.head) document.head.innerHTML = '';
     const chk  = result ? result.name      : 'Unknown Check';
     const url  = result ? result.url       : window.location.href;
     const time = result ? result.timestamp : new Date().toISOString();
