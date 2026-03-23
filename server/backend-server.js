@@ -17,13 +17,18 @@ const fs      = require('fs');
 const path    = require('path');
 
 const app  = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const LOG_FILE = path.join(__dirname, 'threats.json');
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors());                        // allow cross-origin requests from any site
 app.use(express.json());                // parse JSON bodies
 app.use(express.static(__dirname));     // serve your HTML/JS files
+
+// ── Root Health Check ───────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.send('ShieldScan Backend API is running!');
+});
 
 // ── In-memory threat store (also persisted to threats.json) ─────────────────
 let threats = [];
