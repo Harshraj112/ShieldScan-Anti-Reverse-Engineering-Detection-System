@@ -521,11 +521,15 @@
         if (arr.length > 200) arr.splice(0, arr.length - 200); // keep last 200
         localStorage.setItem(KEY, JSON.stringify(arr));
       } catch(e) {}
-      // 3. navigator.sendBeacon (cross-origin POST, if reportUrl configured)
-      if (this.config.reportUrl && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      // 3. fetch (cross-origin POST, if reportUrl configured)
+      if (this.config.reportUrl && typeof fetch !== 'undefined') {
         try {
-          const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-          navigator.sendBeacon(this.config.reportUrl, blob);
+          fetch(this.config.reportUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+          }).catch(e => {});
         } catch(e) {}
       }
     }
