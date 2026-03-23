@@ -20,15 +20,21 @@
 
 ## 🚀 Quick Start
 
-### Zero-config (simplest)
+### Option 1: Using Free CDN (No download required)
+```html
+<script src="https://cdn.jsdelivr.net/gh/Harshraj112/ShieldScan-Anti-Reverse-Engineering-Detection-System@main/dist/antiDebug.min.js"></script>
+<script>ShieldScan.protect();</script>
+```
+
+### Option 2: Self-hosted (Download `dist/antiDebug.min.js`)
 ```html
 <script src="dist/antiDebug.min.js"></script>
 <script>ShieldScan.protect();</script>
 ```
 
-### With options
+### With options (CDN example)
 ```html
-<script src="dist/antiDebug.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Harshraj112/ShieldScan-Anti-Reverse-Engineering-Detection-System@main/dist/antiDebug.min.js"></script>
 <script>
   ShieldScan.protect({
     action:        'warn',     // what to do on detection
