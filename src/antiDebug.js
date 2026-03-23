@@ -607,26 +607,6 @@
       this._running   = true;
       this._startTime = Date.now();
       
-      if (!this._copyHooked) {
-        this._copyHooked = true;
-        document.addEventListener('copy', (e) => {
-          // Optional: e.preventDefault(); e.clipboardData.setData('text/plain', 'Nice try');
-          const r = {
-            name: 'Clipboard Copy',
-            status: 'DETECTED',
-            confidence: 90,
-            detail: 'User attempted to copy content from the page',
-            url: (typeof window !== 'undefined' && window.location ? window.location.href : 'unknown'),
-            timestamp: new Date().toISOString()
-          };
-          this._report.push(r);
-          this._triggerAction(r);
-          this._broadcast(r);
-          if (typeof this.config.onDetected === 'function') {
-            try { this.config.onDetected(r); } catch (err) {}
-          }
-        });
-      }
 
       this._scan(); // run immediately
       this._timer = setInterval(() => this._scan(), this.config.interval);
