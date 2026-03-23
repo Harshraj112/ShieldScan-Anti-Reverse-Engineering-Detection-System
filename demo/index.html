@@ -658,7 +658,7 @@
       <span id="threats-badge" aria-label="threat count">0</span>
     </button>
   </div>
-  <span class="ctrl-info" id="interval-info">Scan: every 1s &middot; Log: last 100 scans &middot; state-changes highlighted</span>
+  <span class="ctrl-info" id="interval-info">Scan: every 1s &middot; Log: last 100 scans &middot; remote events deduplicated</span>
   <div id="controls-right">
     <button class="btn btn-clear" id="btn-clear" aria-label="Clear log">✕ CLEAR LOG</button>
   </div>
@@ -684,331 +684,7 @@
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════════════
-     INLINE antiDebug.js — embedded directly so no server is needed
-════════════════════════════════════════════════════════════════════ -->
-<script>
-/**
- * AntiDebugEngine — Anti-Reverse-Engineering Detection Library
- * Version: 1.0.0
- */
-(function (root, factory) {
-  if (typeof module === 'object' && module.exports) { module.exports = factory(); }
-  else { root['A' + 'ntiD' + 'ebugE' + 'ngine'] = factory(); }
-}(typeof window !== 'undefined' ? window : this, function () {
-
-  const _ts        = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-  const _iso       = () => new Date().toISOString();
-  const _safeCall  = (fn, fb = null) => { try { return fn(); } catch (e) { return fb; } };
-  const _kWD  = 'web' + 'dri' + 'ver';
-  const _kCL  = 'con' + 'sole';
-  const _kPH  = 'ph'  + 'antom';
-  const _kCDP = '__cy' + 'dra';
-  const _kSL  = 'call' + 'Phanto' + 'm';
-
-  function _result(name, status, confidence, detail) {
-    return {
-      name, status, confidence, detail,
-      url: (typeof window !== 'undefined' && window.location ? window.location.href : 'unknown'),
-      timestamp: _iso()
-    };
-  }
-
-  /* 1 — DevTools Timing — lower threshold, more runs, Date.now for wall-clock */
-  function _chkConsoleTiming() {
-    return _safeCall(() => {
-      const RUNS = 5, THR = 3;  // 3ms threshold — reliable in Chrome/Firefox
-      let tot = 0;
-      for (let i = 0; i < RUNS; i++) {
-        const t = Date.now();  // wall-clock is more sensitive to DevTools overhead
-        window[_kCL]['l' + 'og']('%c ', 'font-size:1px;color:transparent');
-        tot += Date.now() - t;
-      }
-      const avg = tot / RUNS;
-      const det = avg > THR;
-      return _result('DevTools Timing', det ? 'DETECTED' : 'CLEAN',
-        det ? Math.min(100, 40 + Math.round(avg * 5)) : 5,
-        det ? `console.log avg ${avg.toFixed(1)}ms — panel open (threshold: ${THR}ms)`
-            : `console.log avg ${avg.toFixed(1)}ms — below ${THR}ms threshold`);
-    }, _result('DevTools Timing', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 2 — DevTools Element Size Detection (highly reliable in Chrome)
-     A div with id set via __defineGetter__ fires toString when DevTools
-     formats the element for the inspector sidebar — size goes non-zero. */
-  function _chkGetterTrap() {
-    return _safeCall(() => {
-      let detected = false;
-      // Method A: element with overridden id getter
-      const el = document.createElement('div');
-      Object.defineProperty(el, 'id', {
-        get: function() { detected = true; return 'devtools-trap'; },
-        configurable: true
-      });
-      // console.log forces DevTools to evaluate el.id for display
-      window[_kCL]['l' + 'og'](el);
-      // Method B: check if a hidden div has non-zero client dimensions
-      // (DevTools forces layout on elements it renders in its tree)
-      if (!detected) {
-        const probe = document.createElement('div');
-        probe.style.cssText = 'position:absolute;top:-9999px;width:1px;height:1px;opacity:0';
-        document.documentElement.appendChild(probe);
-        // Force DevTools to access dimensions
-        const before = probe.clientWidth;
-        window[_kCL]['l' + 'og'](probe);
-        detected = probe.id === 'devtools-trap' || before !== probe.clientWidth;
-        document.documentElement.removeChild(probe);
-      }
-      return _result('DevTools Object Trap', detected ? 'DETECTED' : 'CLEAN',
-        detected ? 88 : 5,
-        detected ? 'Element getter/size trap triggered — DevTools inspector active'
-                 : 'Element trap not triggered');
-    }, _result('DevTools Object Trap', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 3 — Window Size Delta — lowered to 100px (catches smaller docked panels) */
-  function _chkWindowSize() {
-    return _safeCall(() => {
-      const THR = 100;  // was 160px — 100px catches narrower docked panels
-      const wD = Math.abs((window.outerWidth  || 0) - (window.innerWidth  || 0));
-      const hD = Math.abs((window.outerHeight || 0) - (window.innerHeight || 0));
-      const mx = Math.max(wD, hD);
-      const det = mx > THR;
-      return _result('Window Size Delta', det ? 'DETECTED' : 'CLEAN',
-        det ? Math.min(100, Math.round(mx / 2)) : 10,
-        `outer vs inner delta: ${wD}px wide × ${hD}px tall` + (det ? ' — docked panel detected' : ' — no panel'));
-    }, _result('Window Size Delta', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 4 — Debugger Statement Timing */
-  function _chkDebuggerTiming() {
-    return _safeCall(() => {
-      const THR = 100;
-      const t0 = Date.now();
-      (function () { debugger; })(); // eslint-disable-line no-debugger
-      const delta = Date.now() - t0;
-      const det = delta > THR;
-      return _result('Debugger Statement', det ? 'DETECTED' : 'CLEAN',
-        det ? Math.min(100, Math.round(delta / 10)) : 5,
-        `debugger delta: ${delta}ms` + (det ? ' — execution was paused' : ' — no pause'));
-    }, _result('Debugger Statement', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 5 — Prototype Tampering */
-  function _chkPrototypeTampering() {
-    return _safeCall(() => {
-      const fnStr = Function.prototype.toString;
-      const clog  = window[_kCL] && window[_kCL]['l' + 'og'];
-      if (!clog) return _result('Prototype Tampering', 'UNKNOWN', 0, 'console.log not found');
-      const sig = fnStr.call(clog);
-      const isN = sig.indexOf('nat' + 'ive') !== -1 && sig.indexOf('co' + 'de') !== -1;
-      return _result('Prototype Tampering', !isN ? 'DETECTED' : 'CLEAN',
-        !isN ? 90 : 0,
-        !isN ? `console.log.toString() modified: "${sig.slice(0,80)}"`
-             : 'console.log native signature intact');
-    }, _result('Prototype Tampering', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 6 — Function.prototype.toString Override */
-  function _chkFPToStringOverride() {
-    return _safeCall(() => {
-      const nStr   = Object.prototype.toString;
-      const fpStr  = Function.prototype.toString;
-      const tCheck = nStr.call(fpStr);
-      const isFn   = tCheck === '[object Function]';
-      const selfSig = _safeCall(() => fpStr.call(fpStr), '');
-      const isNat  = selfSig.indexOf('nat' + 'ive') !== -1;
-      const det    = !isFn || !isNat;
-      return _result('FP.toString Override', det ? 'DETECTED' : 'CLEAN',
-        det ? 95 : 0,
-        det ? `FP.toString may be overridden. type="${tCheck}", native=${isNat}`
-            : 'Function.prototype.toString appears intact');
-    }, _result('FP.toString Override', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 7 — Browser Automation */
-  function _chkWebDriver() {
-    return _safeCall(() => {
-      const wd  = navigator[_kWD];
-      const det = wd === true;
-      const ex  = ['__dr' + 'iver_ev' + 'aluate', '__web' + 'driver_sc' + 'ript_fn',
-                   '__fxd' + 'river_u' + 'wps', 'calld' + 'river', '_Sel' + 'enium_ide_re' + 'cord'];
-      const exH = ex.some(k => (k in window) || (k in document));
-      const conf = (det ? 70 : 0) + (exH ? 25 : 0);
-      return _result('Browser Automation', (det || exH) ? 'DETECTED' : 'CLEAN',
-        conf, `navigator.webdriver=${wd}, extra props=${exH}`);
-    }, _result('Browser Automation', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 8 — Headless Browser */
-  function _chkHeadless() {
-    return _safeCall(() => {
-      const fl = [];
-      if (navigator.plugins && navigator.plugins.length === 0) fl.push('no plugins');
-      if (!navigator.languages || navigator.languages.length === 0) fl.push('no languages');
-      if (window[_kPH + 'js'] || window['_' + _kPH] ||
-          navigator.userAgent.toLowerCase().indexOf(_kPH) !== -1) fl.push('PhantomJS');
-      if (screen.width === 0 || screen.height === 0)  fl.push('zero screen');
-      if (screen.width === 800 && screen.height === 600) fl.push('default headless res');
-      if (navigator.userAgent.indexOf('Head' + 'lessChrome') !== -1) fl.push('HeadlessChrome UA');
-      if (window[_kCDP]) fl.push('Cypress');
-      if (window[_kSL])  fl.push('callPhantom');
-      const det = fl.length > 0;
-      return _result('Headless Browser', det ? 'DETECTED' : 'CLEAN',
-        det ? Math.min(100, fl.length * 30) : 5,
-        det ? `Indicators: ${fl.join(', ')}` : 'No headless indicators');
-    }, _result('Headless Browser', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 9 — Timing Anomaly */
-  function _chkTimingAnomaly() {
-    return _safeCall(() => {
-      const ITERS = 1e5, THR = 50;
-      const t0 = _ts();
-      let x = 0;
-      for (let i = 0; i < ITERS; i++) { x ^= i & 0xFF; }
-      void x;
-      const delta = _ts() - t0;
-      const det = delta > THR;
-      return _result('Timing Anomaly', det ? 'DETECTED' : 'CLEAN',
-        det ? Math.min(100, Math.round(delta * 2)) : 5,
-        `${ITERS.toLocaleString()} iters in ${delta.toFixed(2)}ms`
-          + (det ? ' — suspiciously slow' : ' — normal speed'));
-    }, _result('Timing Anomaly', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-  /* 10 — iframe Sandbox */
-  function _chkIframeSandbox() {
-    return _safeCall(() => {
-      const fl = [];
-      // Only flag if actually inside an iframe
-      if (window !== window.top) fl.push('inside iframe');
-      // Or running on a known analysis/sandbox platform
-      const hosts = ['jsbin', 'cod' + 'epen', 'jsfiddle', 'plnkr', 'stackblitz'];
-      const href  = (window.location.href || '').toLowerCase();
-      const hm    = hosts.find(h => href.indexOf(h) !== -1);
-      if (hm) fl.push(`platform: ${hm}`);
-      // NOTE: window.open removed — opened a new tab every scan (caused focus switching).
-      // NOTE: document.referrer removed — always set during normal navigation (false positive).
-      const det = fl.length > 0;
-      return _result('iframe Sandbox', det ? 'DETECTED' : 'CLEAN',
-        det ? Math.min(100, fl.length * 50) : 0,
-        det ? `Indicators: ${fl.join(', ')}` : 'Not in an iframe or sandboxed platform');
-    }, _result('iframe Sandbox', 'UNKNOWN', 0, 'Execution failed'));
-  }
-
-
-  /* ── Response Actions ─────────────────────────────────────────────── */
-  function _aSilent()            { /* logged internally */ }
-  function _aWarn(e, r)          { if (!e._w.has(r.name)) { console.warn('[AntiDebug]', r.name, r.detail); e._w.add(r.name); } }
-  function _aRedirect(e)         { if (e.config.redirectUrl) window.location.href = e.config.redirectUrl; }
-  function _aCorrupt(e)          {
-    if (e._corrupted) return; e._corrupted = true;
-    const o = Math.random; Math.random = () => o() > 0.5 ? NaN : Infinity;
-    const p = window.parseInt; window.parseInt = (v,r) => p(v,r) + (Date.now() % 3 === 0 ? 1 : 0);
-  }
-  function _aFreeze(e)           {
-    if (e._frozen) return; e._frozen = true;
-    document.body.style.pointerEvents = 'none';
-    document.body.style.userSelect = 'none';
-    const m = document.createElement('div');
-    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2147483647;cursor:not-allowed';
-    document.body.appendChild(m);
-  }
-  function _aNuke(e, r) {
-    if (e._nuked) return; e._nuked = true; e.stop();
-    Array.from(document.querySelectorAll('script')).forEach(s => s.remove());
-    const chk = r ? r.name : 'Unknown'; const url = r ? r.url : window.location.href; const time = r ? r.timestamp : new Date().toISOString();
-    document.body.innerHTML = ['<div style="position:fixed;inset:0;z-index:2147483647;background:#0a0007;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Courier New,monospace;text-align:center;padding:40px;box-sizing:border-box;background-image:repeating-linear-gradient(0deg,rgba(255,0,0,0.03) 0,rgba(255,0,0,0.03) 1px,transparent 1px,transparent 4px)">','<div style="font-size:clamp(48px,10vw,96px);margin-bottom:16px">⛔</div>','<h1 style="color:#ff2222;font-size:clamp(28px,5vw,56px);font-weight:900;letter-spacing:4px;text-transform:uppercase;margin:0 0 16px;text-shadow:0 0 40px rgba(255,34,34,0.8),0 0 80px rgba(255,34,34,0.4)">CODE REMOVED FOR SECURITY</h1>','<p style="color:#ff6666;font-size:clamp(14px,2vw,20px);margin:0 0 32px;letter-spacing:2px">Unauthorized inspection detected — All protected source code has been purged.</p>','<div style="background:rgba(255,0,0,0.08);border:1px solid rgba(255,34,34,0.3);border-radius:8px;padding:20px 32px;max-width:640px;width:100%;text-align:left">','<div style="color:#ff4444;font-size:12px;letter-spacing:1px;margin-bottom:10px">INCIDENT REPORT</div>','<div style="color:#cc3333;font-size:13px;line-height:2.2;word-break:break-all">','<span style="color:#7a2020">TRIGGER&nbsp;&nbsp;:</span> '+chk+'<br>','<span style="color:#7a2020">URL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:</span> '+url+'<br>','<span style="color:#7a2020">TIME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:</span> '+time+'<br>','<span style="color:#7a2020">ACTION&nbsp;&nbsp;&nbsp;:</span> All &lt;script&gt; tags removed from DOM','</div></div>','<p style="color:#441111;font-size:11px;margin-top:32px;letter-spacing:2px">Protected by ShieldScan AntiDebugEngine v1.0.0</p>','</div>','<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0007;overflow:hidden}</style>'].join('');
-  }
-
-  /* ── Engine Class ─────────────────────────────────────────────────── */
-  const ALL = [_chkConsoleTiming, _chkGetterTrap, _chkWindowSize, _chkDebuggerTiming,
-               _chkPrototypeTampering, _chkFPToStringOverride, _chkWebDriver,
-               _chkHeadless, _chkTimingAnomaly, _chkIframeSandbox];
-
-  class AntiDebugEngine {
-    constructor(cfg = {}) {
-      this.config = Object.assign({
-        interval: 2000, onDetected: null, silent: false,
-        checks: ['all'], action: 'warn', redirectUrl: '', minConfidence: 50
-      }, cfg);
-      this._report = []; this._timer = null; this._running = false;
-      this._startTime = null; this._w = new Set();
-      this._corrupted = false; this._frozen = false; this._nuked = false;
-    }
-
-    _getChecks() {
-      const { checks } = this.config;
-      if (!checks || checks.includes('all')) return ALL;
-      const m = {
-        'devtools-timing': _chkConsoleTiming, 'devtools-object': _chkGetterTrap,
-        'window-size': _chkWindowSize, 'debugger-timing': _chkDebuggerTiming,
-        'prototype-tampering': _chkPrototypeTampering, 'fp-tostring': _chkFPToStringOverride,
-        'webdriver': _chkWebDriver, 'headless': _chkHeadless,
-        'timing-anomaly': _chkTimingAnomaly, 'iframe-sandbox': _chkIframeSandbox
-      };
-      return checks.map(k => m[k]).filter(Boolean);
-    }
-
-    _scan() {
-      const results = this._getChecks().map(fn => fn());
-      results.forEach(r => {
-        this._report.push(r);
-        if (r.status === 'DETECTED' && r.confidence >= this.config.minConfidence) {
-          this._trigger(r);
-          if (typeof this.config.onDetected === 'function')
-            try { this.config.onDetected(r); } catch(e) {}
-        }
-      });
-      return results;
-    }
-
-    _trigger(r) {
-      if (this.config.silent) return;
-      switch (this.config.action) {
-        case 'silent':   _aSilent();            break;
-        case 'redirect': _aRedirect(this, r);   break;
-        case 'corrupt':  _aCorrupt(this, r);    break;
-        case 'freeze':   _aFreeze(this, r);     break;
-        case 'nuke':     _aNuke(this, r);       break;
-        default:         _aWarn(this, r);        break;
-      }
-    }
-
-    start() {
-      if (this._running) return;
-      this._running = true; this._startTime = Date.now();
-      this._scan();
-      this._timer = setInterval(() => this._scan(), this.config.interval);
-    }
-
-    stop() {
-      this._running = false;
-      if (this._timer) { clearInterval(this._timer); this._timer = null; }
-    }
-
-    runOnce() { return this._scan(); }
-
-    getReport() {
-      const th = this._report.filter(r => r.status === 'DETECTED');
-      const ac = this._report.length
-        ? Math.round(this._report.reduce((s,r) => s + r.confidence, 0) / this._report.length) : 0;
-      return {
-        generated: _iso(),
-        uptimeMs:  this._startTime ? Date.now() - this._startTime : 0,
-        totalChecks: this._report.length,
-        threatsDetected: th.length,
-        averageConfidence: ac,
-        config: { ...this.config, onDetected: this.config.onDetected ? '[Function]' : null },
-        events: [...this._report]
-      };
-    }
-  }
-
-  return AntiDebugEngine;
-}));
-</script>
+<script src="../src/antiDebug.js"></script>
 
 <!-- ════════════════════════════════════════════════════════════════════
      DASHBOARD CONTROLLER
@@ -1043,10 +719,8 @@
   /* ── State ──────────────────────────────────────────────────────── */
   let engine        = null;
   let logCount      = 0;
-  // FIX: track last-seen status per check — only log on STATUS CHANGE
-  const lastStatus  = {};   // checkId → last status string
-  const isFirstScan = {};   // checkId → bool (true until first seen)
   const allThreats  = [];   // persistent threat ledger for modal
+  const seenRemoteEvents = new Set();
 
   /* ── DOM refs ───────────────────────────────────────────────────── */
   const $            = id => document.getElementById(id);
@@ -1074,7 +748,6 @@
 
   /* ── Build sidebar check rows ───────────────────────────────────── */
   CHECK_META.forEach(meta => {
-    isFirstScan[meta.id] = true;
     const item = document.createElement('div');
     item.className = 'check-item unknown';
     item.id = 'ci-' + meta.id;
@@ -1103,7 +776,7 @@
     return `[${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}]`;
   }
 
-  /* ── Append log line (only on state-change) ─────────────────────── */
+  /* ── Append log line ─────────────────────────────────────────────── */
   function appendLog(r, forceShow) {
     if (logEmptyEl && logEmptyEl.parentNode === logBody)
       logBody.removeChild(logEmptyEl);
@@ -1199,9 +872,7 @@
     appendScanSeparator(scanCount);
 
     results.forEach(r => {
-      const cid     = getCheckId(r.name);
-      const changed = lastStatus[cid] !== r.status;
-
+      const cid = getCheckId(r.name);
       // Always update sidebar badge:
       updateCheck(r);
       // Always log (every second, every check):
@@ -1213,8 +884,6 @@
         recordThreat(r);
       }
       if (r.status !== 'DETECTED') currentlyDetected[cid] = false;
-
-      lastStatus[cid] = r.status;
     });
 
     updateMetrics(results);
@@ -1276,8 +945,7 @@
 
   btnOnce.addEventListener('click', () => {
     if (!engine) initEngine();
-    const results = engine.runOnce();
-    if (!engine._running) onResults(results);
+    engine.runOnce();
   });
 
   btnClear.addEventListener('click', () => {
@@ -1289,8 +957,12 @@
     // ── Reset engine internal report
     if (engine) engine._report = [];
     // ── Reset all state trackers so next scan logs baseline fresh
-    Object.keys(lastStatus).forEach(k => delete lastStatus[k]);
     Object.keys(currentlyDetected).forEach(k => delete currentlyDetected[k]);
+    seenRemoteEvents.clear();
+    connectedUrls.clear();
+    siteCount.textContent = '0 sites';
+    siteChip.classList.remove('live');
+    siteDot.style.background = 'var(--muted)';
     scanCount = 0;
     // ── Wipe threats ledger completely
     allThreats.length = 0;
@@ -1321,12 +993,16 @@
 
   function handleRemoteEvent(payload) {
     if (!payload || payload.type !== 'shieldscan-event') return;
-    // only process DETECTED events from remote pages
     if (payload.status !== 'DETECTED') return;
+
+    const eventId = payload.eventId || [payload.origin || 'unknown-origin', payload.url || 'unknown-url', payload.name || 'unknown-name', payload.timestamp || 'unknown-time'].join('::');
+    if (seenRemoteEvents.has(eventId)) return;
 
     const srcUrl = payload.url || payload.origin || '?';
     const isLocal = srcUrl === window.location.href;
     if (isLocal) return;  // local events already handled by the engine scan loop
+
+    seenRemoteEvents.add(eventId);
 
     // Track distinct source URLs
     connectedUrls.add(payload.origin || srcUrl);
@@ -1336,6 +1012,7 @@
 
     // Build a fake result object and pass through existing UI pipeline
     const r = {
+      eventId,
       name:       payload.name,
       status:     payload.status,
       confidence: payload.confidence,
