@@ -91,7 +91,7 @@
   <script>
     ShieldScan.protect({
       reportUrl: 'http://localhost:3000/api/threats',
-      action: 'nuke',       // This completely wipes the DOM when DevTools open
+      action: 'obfuscate',  // Scrambles the page content when DevTools open or copy is detected
       debuggerTrap: true,   // This stalls the inspector with continuous breakpoint loops
       minConfidence: 60     // Prevents false positives from instantly blanking the screen
     });

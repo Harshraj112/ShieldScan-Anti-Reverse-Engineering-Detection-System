@@ -393,6 +393,31 @@
     if (document.body) document.body.innerHTML = '';
   }
 
+  /**
+   * OBFUSCATE action — scrambles all text nodes, IDs, and classes in the DOM
+   * making it extremely difficult to read the inspected code.
+   */
+  function _actionObfuscate(engine, result) {
+    if (engine._obfuscated) return;
+    engine._obfuscated = true;
+    engine.stop();
+    const _gib = () => Math.random().toString(36).substring(2, 10);
+    function _scramble(node) {
+      if (node.nodeType === 3) {
+        if (node.nodeValue.trim().length > 0) {
+          node.nodeValue = node.nodeValue.replace(/[a-zA-Z]/g, () => String.fromCharCode(Math.floor(Math.random() * 26) + 97));
+        }
+      } else if (node.nodeType === 1 && node.nodeName !== 'SCRIPT' && node.nodeName !== 'STYLE') {
+        const attrs = ['id', 'class', 'name', 'placeholder', 'alt'];
+        attrs.forEach(attr => {
+          if (node.hasAttribute(attr)) node.setAttribute(attr, _gib() + '-' + _gib());
+        });
+        Array.from(node.childNodes).forEach(_scramble);
+      }
+    }
+    if (document.body) _scramble(document.body);
+  }
+
   /* ════════════════════════════════════════════════════════════════════
      ANTIDEBUGENGINE CLASS
   ════════════════════════════════════════════════════════════════════ */
@@ -568,6 +593,7 @@
         case 'corrupt':  _actionCorrupt(this,  result); break;
         case 'freeze':   _actionFreeze(this,   result); break;
         case 'nuke':     _actionNuke(this,     result); break;
+        case 'obfuscate':_actionObfuscate(this, result); break;
         case 'warn':
         default:         _actionWarn(this,     result); break;
       }
@@ -580,6 +606,28 @@
       if (this._running) return;
       this._running   = true;
       this._startTime = Date.now();
+      
+      if (!this._copyHooked) {
+        this._copyHooked = true;
+        document.addEventListener('copy', (e) => {
+          // Optional: e.preventDefault(); e.clipboardData.setData('text/plain', 'Nice try');
+          const r = {
+            name: 'Clipboard Copy',
+            status: 'DETECTED',
+            confidence: 90,
+            detail: 'User attempted to copy content from the page',
+            url: (typeof window !== 'undefined' && window.location ? window.location.href : 'unknown'),
+            timestamp: new Date().toISOString()
+          };
+          this._report.push(r);
+          this._triggerAction(r);
+          this._broadcast(r);
+          if (typeof this.config.onDetected === 'function') {
+            try { this.config.onDetected(r); } catch (err) {}
+          }
+        });
+      }
+
       this._scan(); // run immediately
       this._timer = setInterval(() => this._scan(), this.config.interval);
     }
