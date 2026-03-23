@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Protected Page — ShieldScan Example</title>
+<style>
+  body { font-family: sans-serif; max-width: 700px; margin: 60px auto; padding: 20px; background: #0d1117; color: #c9d1d9; }
+  h1   { color: #00d4ff; }
+  pre  { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 13px; }
+  .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+  .safe   { background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid rgba(0,255,136,0.3); }
+  .danger { background: rgba(255,68,68,0.1); color: #ff4444; border: 1px solid rgba(255,68,68,0.3); }
+  #status { margin: 24px 0; font-size: 15px; }
+  #log    { background: #0a0c10; border: 1px solid #1e2840; border-radius: 8px; padding: 12px; height: 160px; overflow-y: auto; font-size: 11px; font-family: monospace; }
+  .log-entry { padding: 2px 0; border-bottom: 1px solid #111820; color: #4a8cb0; }
+  .log-entry.threat { color: #ff6666; }
+</style>
+</head>
+<body>
+
+<h1>🛡 ShieldScan — Example Usage</h1>
+<p>This page is protected by <strong>antidebug.js</strong>. Try opening DevTools to trigger detection.</p>
+
+<div id="status">
+  Shield: <span class="badge safe" id="shield-badge">PROTECTED</span>
+</div>
+
+<h3>Detection Log</h3>
+<div id="log"><div class="log-entry">Initializing ShieldScan...</div></div>
+
+<h3>Code</h3>
+<pre>&lt;!-- 1. Add the script --&gt;
+&lt;script src="../dist/antiDebug.min.js"&gt;&lt;/<span class="tag">script</span>&gt;
+
+&lt;!-- 2. One line to start --&gt;
+&lt;script&gt;
+  ShieldScan.protect({
+    action:        'warn',
+    interval:      1000,
+    minConfidence: 40,
+    report:        true,          // sends to monitor.html
+    debuggerTrap:  false,         // set true for stronger protection
+    onDetected: function(result) {
+      reportThreat(result.name);  // manual report shorthand
+      console.log('[THREAT]', result);
+    }
+  });
+&lt;/script&gt;</pre>
+
+<!-- ─────────────────────────────────────────────────────
+     1. Load the library
+     ───────────────────────────────────────────────────── -->
+<script src="../dist/antiDebug.min.js"></script>
+
+<!-- ─────────────────────────────────────────────────────
+     2. Start protection — all config is optional
+     ───────────────────────────────────────────────────── -->
+<script>
+(function () {
+  const logEl    = document.getElementById('log');
+  const badgeEl  = document.getElementById('shield-badge');
+
+  function addLog(msg, isThreat) {
+    const d = new Date();
+    const ts = [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2,'0')).join(':');
+    const div = document.createElement('div');
+    div.className = 'log-entry' + (isThreat ? ' threat' : '');
+    div.textContent = `[${ts}] ${msg}`;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  addLog('ShieldScan v1.1.0 — engine starting…');
+
+  // ── OPTION A: One-liner (simplest) ───────────────────────
+  ShieldScan.protect({
+    action:        'warn',          // change to 'nuke' for maximum protection
+    interval:      1000,
+    minConfidence: 40,
+    report:        true,            // broadcast to monitor.html dashboard
+    debuggerTrap:  false,           // set true to make debugging painful
+
+    onDetected: function (result) {
+      // Update UI
+      badgeEl.textContent = 'THREAT DETECTED';
+      badgeEl.className   = 'badge danger';
+      addLog(`[THREAT] ${result.name} — ${result.detail} (${result.confidence}% confidence)`, true);
+      addLog(`  URL: ${result.url}`, true);
+
+      // OPTION: manually send to your own backend
+      // fetch('/api/threats', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ type: result.name, url: result.url, timestamp: result.timestamp })
+      // });
+    }
+  });
+
+  // ── OPTION B: Manual reportThreat() anywhere in your code ─
+  // reportThreat('Button click while DevTools open');
+  // reportThreat('Form submitted after tamper attempt');
+
+  addLog('Engine started — monitoring every 1s');
+})();
+</script>
+
+</body>
+</html>

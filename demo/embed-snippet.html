@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShieldScan — Embed Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+  :root {
+    --bg: #0a0c10; --surface: #0d1117; --surface2: #111620;
+    --border: #1e2840; --accent: #00d4ff; --safe: #00ff88;
+    --danger: #ff4444; --warn: #ffaa00; --text: #c9d1d9;
+    --muted: #4a5568; --mono: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 40px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: 3px; }
+  .logo span { color: var(--muted); }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 24px; }
+  h1 { font-size: 36px; font-weight: 700; letter-spacing: -1px; margin-bottom: 10px; }
+  .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 48px; line-height: 1.6; }
+
+  .section { margin-bottom: 48px; }
+  .section-label {
+    font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* Code block */
+  .code-block {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; position: relative;
+  }
+  .code-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    font-size: 11px; letter-spacing: 1px; color: var(--muted);
+  }
+  .code-header .dots { display: flex; gap: 6px; }
+  .code-header .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot-r { background: #ff5f57; } .dot-y { background: #febc2e; } .dot-g { background: #28c840; }
+  .copy-btn {
+    background: rgba(0,212,255,0.08); border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent); font-family: var(--mono); font-size: 10px;
+    padding: 4px 12px; border-radius: 4px; cursor: pointer; letter-spacing: 1px;
+    transition: all 0.15s;
+  }
+  .copy-btn:hover { background: rgba(0,212,255,0.18); }
+  .copy-btn.copied { color: var(--safe); border-color: rgba(0,255,136,0.4); background: rgba(0,255,136,0.08); }
+  pre {
+    padding: 20px 20px; font-family: var(--mono); font-size: 13px;
+    line-height: 1.7; overflow-x: auto; color: #8ba4c5;
+    tab-size: 2;
+  }
+  .kw  { color: #c792ea; } .str { color: #80ffe8; }
+  .cmt { color: #3d5473; } .num { color: #f78c6c; }
+  .fn  { color: #82aaff; } .tag { color: var(--accent); }
+
+  /* Steps */
+  .steps { display: flex; flex-direction: column; gap: 16px; }
+  .step {
+    display: flex; gap: 16px; align-items: flex-start;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+  }
+  .step-num {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent);
+  }
+  .step-body h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .step-body p  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .step-body code {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 6px; font-family: var(--mono);
+    font-size: 12px; color: var(--accent);
+  }
+
+  /* Mode cards */
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .mode-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+  }
+  .mode-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .mode-desc  { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .badge-safe { background: rgba(0,255,136,0.1); color: var(--safe); border: 1px solid rgba(0,255,136,0.3); font-size: 9px; padding: 2px 7px; border-radius: 3px; font-family: var(--mono); letter-spacing: 1px; }
+  .badge-warn { background: rgba(255,170,0,0.1); color: var(--warn); border: 1px solid rgba(255,170,0,0.3); font-size: 9px; padding: 2px 7px; border-radius: 3px; font-family: var(--mono); letter-spacing: 1px; }
+
+  .info-box {
+    background: rgba(0,212,255,0.05); border: 1px solid rgba(0,212,255,0.2);
+    border-radius: 8px; padding: 14px 18px; font-size: 13px;
+    color: #5a8ab0; line-height: 1.7; margin-top: 16px;
+  }
+  .info-box strong { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🛡 SHIELDSCAN <span>//</span> EMBED GUIDE</div>
+  <a href="monitor.html" style="color:var(--accent);font-family:var(--mono);font-size:12px;text-decoration:none;border:1px solid rgba(0,212,255,0.3);padding:6px 16px;border-radius:5px">Open Monitor →</a>
+</header>
+
+<main>
+  <h1>Embed ShieldScan in Any Website</h1>
+  <p class="subtitle">
+    Drop 5 lines of code into any page. When a visitor opens DevTools,
+    the threat is instantly visible in <strong>monitor.html</strong> — open in another tab.
+  </p>
+
+  <!-- HOW IT WORKS -->
+  <div class="section">
+    <div class="section-label">How it works</div>
+    <div class="mode-grid">
+      <div class="mode-card">
+        <div class="mode-title">🔴 Protected Page <span class="badge-warn">YOUR SITE</span></div>
+        <div class="mode-desc">Embed <code>antiDebug.js</code>. It runs 10 checks every second. When DevTools opens, it broadcasts the threat via <strong>BroadcastChannel</strong> and writes to <strong>localStorage</strong>.</div>
+      </div>
+      <div class="mode-card">
+        <div class="mode-title">📊 Monitor Dashboard <span class="badge-safe">MONITOR.HTML</span></div>
+        <div class="mode-desc">Open <code>monitor.html</code> in a separate tab. It listens for broadcasts and shows every threat in real time — URL, type, confidence, and timestamp.</div>
+      </div>
+    </div>
+    <div class="info-box">
+      <strong>Works out of the box</strong> for <code>file://</code> pages (same browser) and same-origin HTTP sites. For cross-origin, configure <code>reportUrl</code> to POST to your own server.
+    </div>
+  </div>
+
+  <!-- STEP BY STEP -->
+  <div class="section">
+    <div class="section-label">Quick Start</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h3>Copy antiDebug.js to your project</h3>
+          <p>Place <code>antiDebug.js</code> in the same folder as your website files.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h3>Paste the embed snippet before <code>&lt;/body&gt;</code></h3>
+          <p>Add the 5-line snippet below into every page you want to protect.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h3>Open monitor.html in another tab</h3>
+          <p>The dashboard listens for broadcasts. When DevTools opens on the protected page, the threat appears here within 1–2 seconds, labelled <strong>REMOTE</strong>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMBED SNIPPET -->
+  <div class="section">
+    <div class="section-label">Embed Snippet (copy this)</div>
+    <div class="code-block">
+      <div class="code-header">
+        <div class="dots"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+        <span>your-website.html</span>
+        <button class="copy-btn" id="copy-basic" onclick="copyCode('basic')">COPY</button>
+      </div>
+      <pre id="basic">&lt;<span class="tag">script</span> <span class="kw">src</span>=<span class="str">"antiDebug.min.js"</span>&gt;&lt;/<span class="tag">script</span>&gt;
+&lt;<span class="tag">script</span>&gt;
+  <span class="fn">new</span> <span class="kw">AntiDebugEngine</span>({
+    action:      <span class="str">'warn'</span>,     <span class="cmt">// 'warn' | 'nuke' | 'freeze' | 'redirect'</span>
+    interval:    <span class="num">1000</span>,      <span class="cmt">// scan every 1 second</span>
+    minConfidence: <span class="num">40</span>,     <span class="cmt">// only alert if ≥40% confident</span>
+    report:      <span class="kw">true</span>,      <span class="cmt">// broadcast to monitor.html (default)</span>
+  }).<span class="fn">start</span>();
+&lt;/<span class="tag">script</span>&gt;</pre>
+    </div>
+  </div>
+
+  <!-- NUKE SNIPPET -->
+  <div class="section">
+    <div class="section-label">Maximum Security (Nuke Mode)</div>
+    <div class="code-block">
+      <div class="code-header">
+        <div class="dots"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+        <span>protected-page.html</span>
+        <button class="copy-btn" id="copy-nuke" onclick="copyCode('nuke')">COPY</button>
+      </div>
+      <pre id="nuke">&lt;<span class="tag">script</span> <span class="kw">src</span>=<span class="str">"antiDebug.min.js"</span>&gt;&lt;/<span class="tag">script</span>&gt;
+&lt;<span class="tag">script</span>&gt;
+  <span class="fn">new</span> <span class="kw">AntiDebugEngine</span>({
+    action:        <span class="str">'nuke'</span>,    <span class="cmt">// ⛔ removes all scripts + shows warning</span>
+    interval:      <span class="num">1000</span>,
+    minConfidence: <span class="num">40</span>,
+    report:        <span class="kw">true</span>,     <span class="cmt">// also logs to monitor.html</span>
+  }).<span class="fn">start</span>();
+&lt;/<span class="tag">script</span>&gt;</pre>
+    </div>
+  </div>
+
+  <!-- WHAT THE MONITOR SHOWS -->
+  <div class="section">
+    <div class="section-label">What monitor.html receives</div>
+    <div class="code-block">
+      <div class="code-header">
+        <div class="dots"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+        <span>Threat payload sent via BroadcastChannel</span>
+      </div>
+      <pre>{
+  <span class="kw">"type"</span>:       <span class="str">"shieldscan-event"</span>,
+  <span class="kw">"name"</span>:       <span class="str">"DevTools Timing"</span>,
+  <span class="kw">"status"</span>:     <span class="str">"DETECTED"</span>,
+  <span class="kw">"confidence"</span>: <span class="num">85</span>,
+  <span class="kw">"detail"</span>:     <span class="str">"console.log avg 6.2ms — panel open"</span>,
+  <span class="kw">"url"</span>:        <span class="str">"https://your-site.com/dashboard"</span>,
+  <span class="kw">"timestamp"</span>:  <span class="str">"2025-03-23T08:30:01.234Z"</span>,
+  <span class="kw">"origin"</span>:     <span class="str">"https://your-site.com"</span>
+}</pre>
+    </div>
+  </div>
+
+</main>
+
+<script>
+function copyCode(id) {
+  const pre = document.getElementById(id);
+  // Extract plain text
+  const text = pre.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-' + id);
+    btn.textContent = 'COPIED ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+</script>
+</body>
+</html>

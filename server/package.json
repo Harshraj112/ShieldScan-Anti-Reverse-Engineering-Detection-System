@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "javascript-obfuscator": "^5.4.1",
+    "uglify-js": "^3.19.3"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}
