@@ -8,7 +8,7 @@
  *   node backend-server.js
  *
  * Then configure antidebug.js with:
- *   ShieldScan.protect({ reportUrl: 'http://localhost:3000/api/threats' });
+ *   ShieldScan.protect({ reportUrl: 'https://shieldscan-api.onrender.com/api/threats' });
  */
 
 const express = require('express');
@@ -115,5 +115,5 @@ app.listen(PORT, () => {
   console.log(`  GET  /api/stats     — type/domain breakdown`);
   console.log(`  DELETE /api/threats — clear log`);
   console.log(`\nConfigure antidebug.js:`);
-  console.log(`  ShieldScan.protect({ reportUrl: 'http://localhost:${PORT}/api/threats' });`);
+  console.log(`  ShieldScan.protect({ reportUrl: 'https://shieldscan-api.onrender.com/api/threats' });`);
 });
