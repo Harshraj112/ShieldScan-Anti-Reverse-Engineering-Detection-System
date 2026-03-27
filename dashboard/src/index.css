@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+:root {
+  --bg:       #030712;
+  --surface:  rgba(17, 24, 39, 0.6);
+  --surface2: rgba(31, 41, 55, 0.7);
+  --surface3: rgba(55, 65, 81, 0.8);
+  --border:   rgba(255, 255, 255, 0.08);
+  --accent:   #0ea5e9;
+  --accent-glow: rgba(14, 165, 233, 0.4);
+  --safe:     #10b981;
+  --warn:     #f59e0b;
+  --danger:   #ef4444;
+  --danger-glow: rgba(239, 68, 68, 0.4);
+  --muted:    #6b7280;
+  --text:     #f9fafb;
+  --text-dim: #9ca3af;
+  --mono:     'JetBrains Mono', monospace;
+  --sans:     'Outfit', system-ui, sans-serif;
+  --radius:   12px;
+  --blur:     backdrop-filter: blur(16px);
+}
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+.bg-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: 
+    radial-gradient(circle at 15% 50%, rgba(14, 165, 233, 0.08), transparent 40%),
+    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.05), transparent 40%),
+    radial-gradient(circle at 50% 80%, rgba(239, 68, 68, 0.05), transparent 50%);
+  filter: blur(40px);
+  animation: bgPulse 15s ease-in-out infinite alternate;
+}
+@keyframes bgPulse {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.1); }
+}
+.scanline {
+  content: '';
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg,
+    rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px,
+    rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  z-index: -1;
+}
+.mono { font-family: var(--mono); }
+.text-dim { color: var(--text-dim); }
+.text-accent { color: var(--accent); }
+.text-danger { color: var(--danger); }
+.text-safe   { color: var(--safe); }
+.text-warn   { color: var(--warn); }

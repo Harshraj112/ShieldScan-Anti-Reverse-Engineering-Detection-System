@@ -1,217 +1,198 @@
-/**
- * ShieldScan — Backend Threat Logging Server
- * A minimal Node.js / Express server that receives threats from antidebug.js
- * and logs them to a JSON file (or database).
- *
- * Usage:
- *   npm install express cors
- *   node backend-server.js
- *
- * Then configure antidebug.js with:
- *   ShieldScan.protect({ reportUrl: 'https://shieldscan-api.onrender.com/api/threats', reportToken: 'shared-secret' });
- */
 
 const express = require('express');
 const cors    = require('cors');
 const fs      = require('fs');
 const path    = require('path');
-
+const crypto  = require('crypto');
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const LOG_FILE = path.join(__dirname, 'threats.json');
-const API_KEY = process.env.SHIELDSCAN_API_KEY || '';
-const ALLOWED_ORIGINS = (process.env.SHIELDSCAN_ALLOWED_ORIGINS || '')
-  .split(',')
-  .map(v => v.trim())
-  .filter(Boolean);
+const THREATS_FILE = path.join(__dirname, 'threats.json');
+const BLOCKED_FILE = path.join(__dirname, 'blocked.json');
+const DASHBOARD_PASS = process.env.SHIELDSCAN_PASS || 'admin123';
+const DASHBOARD_PASS_HASH = crypto.createHash('sha256').update(DASHBOARD_PASS).digest('hex');
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT = parseInt(process.env.SHIELDSCAN_RATE_LIMIT || '120', 10);
 const requestCounts = new Map();
-
-function isAllowedOrigin(origin) {
-  if (!origin) return true;
-  if (!ALLOWED_ORIGINS.length) return true;
-  return ALLOWED_ORIGINS.includes(origin);
+let threats = [];
+let blockedIps = {};  
+function loadFile(filePath, defaultVal) {
+  try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); }
+  catch (e) { return defaultVal; }
 }
-
+threats    = loadFile(THREATS_FILE, []);
+blockedIps = loadFile(BLOCKED_FILE, {});
+function saveThreats()  { fs.writeFile(THREATS_FILE, JSON.stringify(threats,    null, 2), () => {}); }
+function saveBlocked()  { fs.writeFile(BLOCKED_FILE, JSON.stringify(blockedIps, null, 2), () => {}); }
 function normalizeUrl(value) {
   if (typeof value !== 'string' || value.length > 2048) return '';
-  try {
-    return new URL(value).toString();
-  } catch (error) {
-    return '';
-  }
+  try { return new URL(value).toString(); } catch (e) { return value.slice(0, 2048); }
 }
-
+function htmlEscape(str) {
+  return String(str || '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]);
+}
 function cleanupRateLimit(now) {
-  requestCounts.forEach((entry, key) => {
-    if (now - entry.windowStart > RATE_WINDOW_MS) requestCounts.delete(key);
-  });
+  requestCounts.forEach((e, k) => { if (now - e.windowStart > RATE_WINDOW_MS) requestCounts.delete(k); });
 }
-
-function verifyApiKey(req, res, next) {
-  if (!API_KEY) return next();
-  const token = req.get('x-shieldscan-key') || (req.body && req.body.token) || req.query.token;
-  if (token !== API_KEY) {
-    return res.status(401).json({ error: 'Missing or invalid API key' });
-  }
-  return next();
-}
-
 function rateLimit(req, res, next) {
-  const now = Date.now();
-  cleanupRateLimit(now);
+  const now = Date.now(); cleanupRateLimit(now);
   const key = req.ip || 'unknown';
   const entry = requestCounts.get(key);
   if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
-    requestCounts.set(key, { count: 1, windowStart: now });
-    return next();
+    requestCounts.set(key, { count: 1, windowStart: now }); return next();
   }
-  if (entry.count >= RATE_LIMIT) {
-    return res.status(429).json({ error: 'Rate limit exceeded' });
-  }
-  entry.count += 1;
-  return next();
+  if (entry.count >= RATE_LIMIT) return res.status(429).json({ error: 'Rate limit exceeded' });
+  entry.count++; next();
 }
-
-function validatePayload(body) {
-  if (!body || body.type !== 'shieldscan-event') {
-    return { ok: false, error: 'Invalid payload type' };
+const activeSessions = new Set();
+function makeToken() {
+  const t = crypto.randomBytes(24).toString('hex');
+  activeSessions.add(t);
+  setTimeout(() => activeSessions.delete(t), 10 * 60 * 1000); 
+  return t;
+}
+function requireAuth(req, res, next) {
+  const token = req.headers['x-shieldscan-token'] || req.query.token;
+  if (activeSessions.has(token)) return next();
+  return res.status(401).json({ error: 'Unauthorized. POST /api/auth to login.' });
+}
+app.use(cors({ origin: '*', methods: ['GET','POST','DELETE','OPTIONS'] }));
+app.use(express.json({ limit: '64kb' }));
+app.use(express.static(path.join(__dirname, '..', 'demo'))); 
+app.use('/src', express.static(path.join(__dirname, '..', 'src'))); 
+app.use('/dist', express.static(path.join(__dirname, '..', 'dist'))); 
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, uptime: process.uptime(), threats: threats.length, blocked: Object.keys(blockedIps).length });
+});
+app.post('/api/auth', (req, res) => {
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ error: 'Password required' });
+  const hash = crypto.createHash('sha256').update(password).digest('hex');
+  if (hash !== DASHBOARD_PASS_HASH) return res.status(401).json({ error: 'Invalid password' });
+  res.json({ ok: true, token: makeToken() });
+});
+app.post('/api/threats', rateLimit, (req, res) => {
+  const body = req.body || {};
+  if (!body.name && !body.violationType) {
+    return res.status(400).json({ error: 'Missing threat name/violationType' });
   }
-  if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 120) {
-    return { ok: false, error: 'Invalid threat name' };
+  let ip = body.ip;
+  if (!ip || ip === 'unavailable' || ip === 'unknown') {
+    ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || 'unknown';
   }
-  if (!['DETECTED', 'CLEAN', 'UNKNOWN'].includes(body.status)) {
-    return { ok: false, error: 'Invalid status' };
-  }
-  if (!Number.isFinite(body.confidence) || body.confidence < 0 || body.confidence > 100) {
-    return { ok: false, error: 'Invalid confidence' };
-  }
-  if (typeof body.detail !== 'string' || body.detail.length > 2000) {
-    return { ok: false, error: 'Invalid detail' };
-  }
-  if (typeof body.timestamp !== 'string' || Number.isNaN(Date.parse(body.timestamp))) {
-    return { ok: false, error: 'Invalid timestamp' };
-  }
-  const url = normalizeUrl(body.url);
-  const origin = normalizeUrl(body.origin);
-  if (!url || !origin) {
-    return { ok: false, error: 'Invalid url/origin' };
-  }
-  return {
-    ok: true,
-    value: {
-      eventId: typeof body.eventId === 'string' && body.eventId ? body.eventId : `${origin}::${body.name}::${body.timestamp}`,
-      name: body.name.trim(),
-      status: body.status,
-      confidence: body.confidence,
-      detail: body.detail,
-      url,
-      origin,
-      timestamp: body.timestamp
+  if (ip === '::1') ip = '127.0.0.1';
+  if (ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
+  let isBlocked = !!blockedIps[ip];
+  if (body.triggerBlock && ip && ip !== 'unknown') {
+    if (!isBlocked) {
+      blockedIps[ip] = { blockedAt: new Date().toISOString(), reason: 'Auto-blocked (Threat Threshold Reached)' };
+      saveBlocked();
+      isBlocked = true;
     }
-  };
-}
-
-// ── Middleware ──────────────────────────────────────────────────────────────
-app.use(cors({
-  origin(origin, callback) {
-    if (isAllowedOrigin(origin)) return callback(null, true);
-    return callback(new Error('Origin not allowed by ShieldScan'));
   }
-}));
-app.use(express.json({ limit: '32kb' })); // parse JSON bodies
-app.use(express.static(__dirname));     // serve your HTML/JS files
-
-// ── Root Health Check ───────────────────────────────────────────────────────
-app.get('/', (req, res) => {
-  res.send('ShieldScan Backend API is running!');
-});
-
-// ── In-memory threat store (also persisted to threats.json) ─────────────────
-let threats = [];
-try {
-  const raw = fs.readFileSync(LOG_FILE, 'utf8');
-  threats = JSON.parse(raw);
-} catch (e) { /* first run — file doesn't exist yet */ }
-
-// ── POST /api/threats — receive a threat from antidebug.js ──────────────────
-app.post('/api/threats', verifyApiKey, rateLimit, (req, res) => {
-  const validation = validatePayload(req.body);
-  if (!validation.ok) {
-    return res.status(400).json({ error: validation.error });
-  }
-  const body = validation.value;
-
   const threat = {
-    id:         body.eventId,
-    eventId:    body.eventId,
-    name:       body.name,
-    status:     body.status,
-    confidence: body.confidence,
-    detail:     body.detail,
-    url:        body.url,
-    origin:     body.origin,
-    timestamp:  body.timestamp,
-    serverTime: new Date().toISOString(),
-    ip:         req.ip
+    id:               body.eventId || `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+    name:             htmlEscape(body.name || body.violationType || 'Unknown'),
+    violationType:    htmlEscape(body.violationType || body.name || 'Unknown'),
+    status:           ['DETECTED','CLEAN','UNKNOWN'].includes(body.status) ? body.status : 'DETECTED',
+    confidence:       Number.isFinite(body.confidence) ? body.confidence : 90,
+    detail:           htmlEscape(String(body.detail || '').slice(0, 500)),
+    ip:               String(ip).slice(0, 100),
+    userAgent:        htmlEscape(String(body.userAgent || '').slice(0, 300)),
+    screenResolution: htmlEscape(String(body.screenResolution || '').slice(0, 20)),
+    referrer:         htmlEscape(String(body.referrer || '').slice(0, 500)),
+    pageUrl:          String(body.pageUrl || body.url || '').slice(0, 2048),
+    url:              String(body.url || body.pageUrl || '').slice(0, 2048),
+    website:          htmlEscape(String(body.website || '').slice(0, 200)),
+    origin:           String(body.origin || '').slice(0, 200),
+    sessionId:        String(body.sessionId || '').slice(0, 64),
+    timestamp:        typeof body.timestamp === 'string' && !isNaN(Date.parse(body.timestamp))
+                        ? body.timestamp : new Date().toISOString(),
+    serverTime:       new Date().toISOString(),
+    serverIp:         req.ip,
+    autoBlocked:      isBlocked
   };
-
   threats.push(threat);
-
-  // Keep last 10,000 entries
   if (threats.length > 10000) threats.splice(0, threats.length - 10000);
-
-  // Persist to file
-  fs.writeFile(LOG_FILE, JSON.stringify(threats, null, 2), () => {});
-
-  console.log(`[THREAT] ${threat.name} — ${threat.url} @ ${threat.serverTime}`);
-
-  res.status(201).json({ ok: true, id: threat.id });
+  saveThreats();
+  console.log(`[THREAT] ${threat.violationType} | ${threat.ip} | ${threat.website} | ${threat.serverTime}`);
+  res.status(201).json({ ok: true, id: threat.id, blocked: isBlocked });
 });
-
-// ── GET /api/threats — retrieve all logged threats ───────────────────────────
-app.get('/api/threats', (req, res) => {
-  const limit  = parseInt(req.query.limit)  || 100;
-  const offset = parseInt(req.query.offset) || 0;
-  const url    = req.query.url;
-
-  let results = [...threats].reverse(); // newest first
-  if (url) results = results.filter(t => t.url.includes(url));
-
+app.get('/api/threats', requireAuth, (req, res) => {
+  const limit   = Math.min(parseInt(req.query.limit)  || 100, 500);
+  const offset  = parseInt(req.query.offset) || 0;
+  const website = req.query.website;
+  const ip      = req.query.ip;
+  const date    = req.query.date; 
+  let results = [...threats].reverse();
+  if (website) results = results.filter(t => (t.website || t.origin || t.url || '').includes(website));
+  if (ip)      results = results.filter(t => t.ip === ip);
+  if (date)    results = results.filter(t => t.timestamp && t.timestamp.startsWith(date));
   res.json({
-    total:   threats.length,
-    count:   Math.min(limit, results.length - offset),
+    total:   results.length,
+    count:   Math.min(limit, Math.max(0, results.length - offset)),
     threats: results.slice(offset, offset + limit)
   });
 });
-
-// ── DELETE /api/threats — clear all threat logs ──────────────────────────────
-app.delete('/api/threats', (req, res) => {
+app.delete('/api/threats', requireAuth, (req, res) => {
   threats = [];
-  fs.writeFile(LOG_FILE, '[]', () => {});
+  saveThreats();
   res.json({ ok: true, message: 'All threats cleared' });
 });
-
-// ── GET /api/stats — quick statistics ───────────────────────────────────────
 app.get('/api/stats', (req, res) => {
-  const byType = {};
-  const byUrl  = {};
+  const today = new Date().toISOString().slice(0, 10);
+  const byType = {}, byDomain = {}, uniqueIps = new Set();
+  let todayCount = 0;
   threats.forEach(t => {
-    byType[t.name] = (byType[t.name] || 0) + 1;
-    const domain = (() => { try { return new URL(t.url).hostname; } catch(e) { return t.url; } })();
-    byUrl[domain]  = (byUrl[domain]  || 0) + 1;
+    const type = t.violationType || t.name || 'Unknown';
+    byType[type]  = (byType[type] || 0) + 1;
+    const domain = t.website || (() => { try { return new URL(t.url || t.origin || '').hostname; } catch(e) { return t.origin || t.url || 'unknown'; } })();
+    byDomain[domain] = (byDomain[domain] || 0) + 1;
+    if (t.ip) uniqueIps.add(t.ip);
+    if (t.timestamp && t.timestamp.startsWith(today)) todayCount++;
   });
-  res.json({ total: threats.length, byType, byUrl });
+  res.json({
+    total:       threats.length,
+    todayCount,
+    uniqueIps:   uniqueIps.size,
+    blockedIps:  Object.keys(blockedIps).length,
+    byType,
+    byDomain
+  });
 });
-
-// ── Start ────────────────────────────────────────────────────────────────────
+app.get('/api/blocked', requireAuth, (req, res) => {
+  res.json({ blocked: blockedIps });
+});
+app.get('/api/blocked/check/:ip', (req, res) => {
+  const ip = req.params.ip;
+  res.json({ blocked: !!blockedIps[ip], ip });
+});
+app.post('/api/blocked/:ip', requireAuth, (req, res) => {
+  const ip = req.params.ip;
+  blockedIps[ip] = { blockedAt: new Date().toISOString(), reason: req.body && req.body.reason || 'Manual block' };
+  saveBlocked();
+  console.log(`[BLOCK] IP ${ip} blocked`);
+  res.json({ ok: true, ip, blockedAt: blockedIps[ip].blockedAt });
+});
+app.delete('/api/blocked/:ip', requireAuth, (req, res) => {
+  const ip = req.params.ip;
+  if (!blockedIps[ip]) return res.status(404).json({ error: 'IP not in blocked list' });
+  delete blockedIps[ip];
+  saveBlocked();
+  console.log(`[UNBLOCK] IP ${ip} unblocked`);
+  res.json({ ok: true, ip, message: 'IP unblocked successfully' });
+});
 app.listen(PORT, () => {
-  console.log(`ShieldScan backend running at http://localhost:${PORT}`);
-  console.log(`  POST /api/threats   — receive threats from antidebug.js`);
-  console.log(`  GET  /api/threats   — list all threats (supports ?limit=N&url=...)`);
-  console.log(`  GET  /api/stats     — type/domain breakdown`);
-  console.log(`  DELETE /api/threats — clear log`);
-  console.log(`\nConfigure antidebug.js:`);
-  console.log(`  ShieldScan.protect({ reportUrl: 'https://shieldscan-api.onrender.com/api/threats', reportToken: 'shared-secret' });`);
+  console.log(`\n🛡  ShieldScan Backend v2.0 — http://localhost:${PORT}`);
+  console.log(`\n  Dashboard password: ${DASHBOARD_PASS} (set SHIELDSCAN_PASS env to change)`);
+  console.log(`\n  POST   /api/auth              — login (password: "${DASHBOARD_PASS}")`);
+  console.log(`  POST   /api/threats           — receive violations from embed.js`);
+  console.log(`  GET    /api/threats           — list threats (auth required)`);
+  console.log(`  GET    /api/stats             — public stats`);
+  console.log(`  GET    /api/blocked           — list blocked IPs (auth required)`);
+  console.log(`  POST   /api/blocked/:ip       — block IP (auth required)`);
+  console.log(`  DELETE /api/blocked/:ip       — unblock IP (auth required)`);
+  console.log(`  GET    /api/blocked/check/:ip — check if IP is blocked (public)`);
+  console.log(`\n`);
 });

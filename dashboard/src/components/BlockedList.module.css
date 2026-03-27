@@ -1,0 +1,96 @@
+.container {
+  padding: 10px 0;
+}
+.empty {
+  padding: 60px;
+  text-align: center;
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 16px;
+}
+.title {
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.title::before {
+  content: '';
+  display: block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 15px var(--danger-glow);
+}
+.subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 32px;
+  font-weight: 500;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 24px;
+}
+.card {
+  background: rgba(239, 68, 68, 0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: all 0.3s;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+.card:hover {
+  background: rgba(239, 68, 68, 0.1);
+  transform: translateY(-4px);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 15px 40px rgba(239, 68, 68, 0.15);
+}
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.ip {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.5px;
+  text-shadow: 0 0 15px rgba(255,255,255,0.2);
+}
+.unblockBtn {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--safe);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.unblockBtn:hover { 
+  background: rgba(16, 185, 129, 0.2); 
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+  transform: translateY(-2px);
+}
+.meta {
+  font-size: 13px;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.meta strong { color: var(--text); font-weight: 500; font-family: var(--sans); }
